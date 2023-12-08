@@ -6,7 +6,14 @@
 
 #include <string>
 #include <fstream>
+#include <iomanip>
+#include <iostream>
 #include <map>
+#include <sstream>
+#include <string>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <direct.h>
 
 #if defined(__APPLE__)
 #include <unistd.h>
