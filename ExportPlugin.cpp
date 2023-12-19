@@ -14,6 +14,12 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <direct.h>
+#include <vector>
+#include <locale>
+#include <codecvt>
+#include <windows.h>
+#include <algorithm>
+
 
 #if defined(__APPLE__)
 #include <unistd.h>
@@ -4053,6 +4059,59 @@ void ChangeDisplacementMapValue(){
     FABRIC_API->GetPBRMaterialDisplacementMapValue(0, 0);
 }
 
+void create_folders(const std::string& work_path, const std::vector<std::string>& grading_names, const std::string& group_name) {
+	int check;
+	for (size_t index = 0; index < grading_names.size(); ++index) {
+		std::string folder_name = grading_names[index];
+		std::ostringstream oss;
+		oss << std::setw(2) << std::setfill('0') << (index + 1);
+		std::string join_folder_path = work_path + oss.str() + "_" + folder_name + group_name;
+		std::string folder_path = join_folder_path;
+		std::replace(folder_path.begin(), folder_path.end(), '/', '\\');
+		_mkdir(folder_path.c_str());
+		
+		
+		//UTILITY_API->DisplayMessageBox(folder_path);
+	}
+}
+void export_simulated_obj(const std::string& work_path, const std::vector<std::string>& grading_names, const std::string& group_name, size_t current_grading_index) {
+	Marvelous::ImportExportOption options;
+	options.bExportAvatar = false;
+	options.scale = 0.001;
+	options.bSaveInZip = false;
+
+	size_t real_grading_index = current_grading_index + 1;
+	std::string obj_name = grading_names[current_grading_index];
+	std::ostringstream oss;
+	oss << std::setw(2) << std::setfill('0') << (real_grading_index);
+	std::string simulate_obj_path = work_path + oss.str() + "_" + obj_name + group_name + "/" + std::to_string(real_grading_index) + "_" + obj_name + group_name + "-s.obj";
+
+	UTILITY_API->CreateProgressBar();
+	UTILITY_API->SetProgress("Create Simulate OBJ", 25);
+	UTILITY_API->Simulate(100);
+	UTILITY_API->DeleteProgressBar(true);
+
+	EXPORT_API->ExportOBJ(simulate_obj_path,options);
+}
+void export_all_obj_planes(const std::string& work_path, const std::vector<std::string>& grading_names, const std::string& group_name) {
+	Marvelous::ImportExportOption options;
+	options.bExportAvatar = false;
+	options.scale = 0.001;
+	options.bSaveInZip = false;
+
+	for (size_t index = 0; index < grading_names.size(); ++index) {
+		std::string folder_name = grading_names[index];
+		std::ostringstream oss;
+		oss << std::setw(2) << std::setfill('0') << (index + 1);
+		std::string folder_path_obj_plane = work_path + oss.str() + "_" + folder_name + group_name + "/" + std::to_string(index + 1) + "_" + folder_name + group_name + ".obj";
+
+		
+		PATTERN_API->ChangeGradingSizeInformation(0, index);
+		UTILITY_API->ResetClothArrangement();
+	    EXPORT_API->ExportOBJ(folder_path_obj_plane, options);
+	}
+}
+
 extern CLO_PLUGIN_SPECIFIER void DoFunction()
 {
 
@@ -4069,7 +4128,8 @@ extern CLO_PLUGIN_SPECIFIER void DoFunction()
 #endif
 
 #if TEST_ALL_FUNCTIONS |  USE_EXPORT_OBJ_SAMPLE
-	ExportOBJ_Sample();
+	auto gradingSizeGroupList = PATTERN_API->GetValidGradingSizeGroupInformation();
+
 #endif
 
 #if TEST_ALL_FUNCTIONS | USE_FABRIC_SAMPLE
@@ -4821,7 +4881,80 @@ extern CLO_PLUGIN_SPECIFIER void DoFunction()
 	ExportPOMfor3DLength_Sample();
 #endif
 #if TEST_ALL_FUNCTIONS | USE_MY_EXPORT_OBJ
-	ExportPOMfor3DLength_Sample();
+	//declarando variables
+	string work_path;
+	std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+	std::string project_patch = UTILITY_API->GetProjectFilePath();
+	std::string real_path = project_patch.substr(0, project_patch.rfind("/") + 1);
+	auto gradingSizeGroupList = PATTERN_API->GetGradingSizeGroupInformation();
+	float particleDistance = PATTERN_API->GetParticleDistanceOfPattern(0);
+	
+
+
+	if (!gradingSizeGroupList.empty())//verificando que no este empty
+	{
+	std::vector<std::string> grading_name = PATTERN_API->GetGradingSizeNameList();
+	size_t current_grading_index = PATTERN_API->GetCurrentGradingSizeIndex();
+	size_t grading_count = PATTERN_API->GetGradingSizeTotalCount();
+	std::string group_name = converter.to_bytes(gradingSizeGroupList[0]);
+	
+	if (group_name == "Size Group 1" && group_name == "Size Group") {
+		work_path = real_path + "Sizes/";
+		std::string folder = work_path;
+		std::replace(folder.begin(), folder.end(), '/', '\\');
+		_mkdir(folder.c_str());
+		group_name = "";
+	   
+	}	
+	else {
+		std::string create_sise_file = real_path + "Sizes/";
+		std::string folder1 = create_sise_file;
+		std::replace(folder1.begin(), folder1.end(), '/', '\\');
+		_mkdir(folder1.c_str());
+		work_path = real_path + "Sizes/" + group_name + "/";
+		std::string folder = work_path;
+		std::replace(folder.begin(), folder.end(), '/', '\\');
+		_mkdir(folder.c_str());
+		group_name = "_" + group_name;
+	}
+	
+	
+	create_folders(work_path, grading_name, group_name);
+	export_simulated_obj(work_path, grading_name, group_name, current_grading_index);
+	export_all_obj_planes(work_path,grading_name,group_name);
+
+	string msg = "=======Export Done=========\nPattern Particle Distance : " + to_string(particleDistance)+"\nTotal Exported Sizes : "+ to_string(grading_count)+"\nProject Patch : " + work_path+"\n =====Export BOM(*.xml)=======";
+	UTILITY_API->DisplayMessageBox(msg);
+	
+	
+	}
+	else
+	{
+		std::string create_sise_file = real_path + "Sizes/";
+		std::string folder1 = create_sise_file;
+		std::replace(folder1.begin(), folder1.end(), '/', '\\');
+		_mkdir(folder1.c_str());
+		//exporta simulate obj w-out-Grading
+		Marvelous::ImportExportOption options;
+		options.bExportAvatar = false;
+		options.scale = 0.001;
+		std::string simulate_obj_path = real_path + "Sizes/" + "export-OBj-s.obj";
+		std::string export_obj_path = real_path + "Sizes/" + "export-OBj.obj";
+		UTILITY_API->CreateProgressBar();
+		UTILITY_API->SetProgress("Create Simulate OBJ", 50);
+		UTILITY_API->Simulate(100);
+		EXPORT_API->ExportOBJ(simulate_obj_path, options);
+		UTILITY_API->SetProgress("Create OBJ", 75);
+		UTILITY_API->ResetClothArrangement();
+		EXPORT_API->ExportOBJ(export_obj_path, options);
+		UTILITY_API->DeleteProgressBar(true);
+		// Assuming 'ieo' is a global variable
+		string msg = "=======Export Done===========\n=======Export the BOM(*.xml)====";
+	    UTILITY_API->DisplayMessageBox(msg);
+	}
+	
+	
+	return;
 #endif
 #if TEST_ALL_FUNCTIONS | USE_DISPLACEMENT_MAP_API_TEST
     ChangeDisplacementMapValue();
@@ -5573,7 +5706,7 @@ extern CLO_PLUGIN_SPECIFIER const char* GetActionName()
     actionName = "Export POM 3DLength Test";
 #endif
 #if USE_MY_EXPORT_OBJ
-	actionName = "Export OBJ to Blender";
+	actionName = "Export To Roboloom (Auto Seam 1)";
 #endif
 #if TEST_ALL_FUNCTIONS // should be here at the last position
 	actionName = "All Tests";
